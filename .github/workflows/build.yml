@@ -1,4 +1,4 @@
-name: Build and save Vue Docker image
+name: Build and push Vue image to ECR
 
 on:
   push:
@@ -8,6 +8,12 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 877969058937.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: learning-vue
 
 jobs:
   build:
@@ -17,19 +23,24 @@ jobs:
       - name: Download repository code
         uses: actions/checkout@v6
 
-      - name: Build Docker image
-        run: docker build -t learning-vue:${{ github.sha }} .
-
-      - name: List Docker images
-        run: docker image ls
-
-      - name: Export Docker image to a file
-        run: docker save -o learning-vue.tar learning-vue:${{ github.sha }}
-
-      - name: Upload image as an artifact
-        uses: actions/upload-artifact@v4
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
-          name: learning-vue-image
-          path: learning-vue.tar
-          retention-days: 1
-          if-no-files-found: error
+          role-to-assume: arn:aws:iam::877969058937:role/GitHubEcrRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log Docker into ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" .
+
+      - name: Push Docker image to ECR
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
