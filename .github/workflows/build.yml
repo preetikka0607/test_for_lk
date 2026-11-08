@@ -1,4 +1,4 @@
-name: Build Vue Docker image
+name: Build and save Vue Docker image
 
 on:
   push:
@@ -22,3 +22,14 @@ jobs:
 
       - name: List Docker images
         run: docker image ls
+
+      - name: Export Docker image to a file
+        run: docker save -o learning-vue.tar learning-vue:${{ github.sha }}
+
+      - name: Upload image as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: learning-vue-image
+          path: learning-vue.tar
+          retention-days: 1
+          if-no-files-found: error
