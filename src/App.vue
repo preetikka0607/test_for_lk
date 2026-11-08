@@ -11,7 +11,7 @@ function increaseCount() {
 <template>
   <main>
     <h1>My Docker Learning App</h1>
-    <p>This Vue app is from github.</p>
+    <p>This Vue app is from Preeti & Logesh github repo.</p>
 
     <button @click="increaseCount">
       Clicked {{ count }} times
