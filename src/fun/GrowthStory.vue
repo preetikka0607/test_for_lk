@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { createGrowthRenderer } from './growth-renderer.js'
-import dryLandscape from './assets/couple-dry.jpg'
-import rainLandscape from './assets/couple-rain.jpg'
-import forestLandscape from './assets/couple-forest.jpg'
+import dryLandscape from './assets/love-dry.jpg'
+import rainLandscape from './assets/love-rain.jpg'
+import forestLandscape from './assets/love-forest.jpg'
+import seatedCouple from './assets/seated-couple.png'
 import bluebells from './assets/bluebells.png'
 
 defineEmits(['close'])
@@ -18,7 +19,8 @@ const progress = ref(0)
 const playing = ref(false)
 const pausedNature = ref(false)
 const reducedMotion = ref(false)
-const images = [dryLandscape, rainLandscape, forestLandscape]
+const landscapes = [dryLandscape, rainLandscape, forestLandscape]
+const images = [...landscapes, seatedCouple]
 const imageElements = []
 const loadedImages = new Set()
 const titles = ['Winter', 'Rain', 'Roots', 'Spring', 'Afterglow']
@@ -72,6 +74,18 @@ function stopForKey(event) {
 
 function applyScene(value) {
   const style = root.value.style
+  // The fallback uses the same image coordinates and slow camera move as WebGL.
+  const imageAspect = imageElements[0]?.naturalWidth / imageElements[0]?.naturalHeight || 1.6
+  const aspect = window.innerWidth / window.innerHeight
+  const coverX = Math.min(1, aspect / imageAspect)
+  const zoom = 1.018 + value * .045
+  const planeWidth = Math.max(window.innerWidth, window.innerHeight * imageAspect) * zoom
+  const planeHeight = planeWidth / imageAspect
+  const centerX = .5 + .28 * (1 - coverX)
+  style.setProperty('--plane-width', `${planeWidth}px`)
+  style.setProperty('--plane-height', `${planeHeight}px`)
+  style.setProperty('--plane-left', `${window.innerWidth * .5 - centerX * planeWidth}px`)
+  style.setProperty('--plane-top', `${(window.innerHeight - planeHeight) * .5}px`)
   const wet = smoothstep(.10, .44, value)
   const green = smoothstep(.40, .89, value)
   style.setProperty('--wet', wet.toFixed(4))
@@ -145,7 +159,7 @@ function toggleNature() {
 
 async function imageLoaded(index) {
   loadedImages.add(index)
-  if (loadedImages.size !== 3 || initializing) return
+  if (loadedImages.size !== images.length || initializing) return
   initializing = true
   await Promise.all(imageElements.map((image) => image.decode().catch(() => {})))
   if (!alive) return
@@ -180,7 +194,7 @@ function contextLost(event) {
 }
 
 function contextRestored() {
-  if (!alive || loadedImages.size !== 3) return
+  if (!alive || loadedImages.size !== images.length) return
   renderer = createGrowthRenderer(canvas.value, imageElements)
   gpuReady.value = Boolean(renderer)
   schedule()
@@ -229,7 +243,8 @@ onBeforeUnmount(() => {
   <main ref="root" class="growth-story" :class="{ 'story-ready': ready, 'nature-paused': pausedNature, 'reduced-motion': reducedMotion }" aria-label="Through the seasons: a landscape returning to life">
     <div class="world" aria-hidden="true">
       <div class="seasonal-plates">
-        <img v-for="(source, index) in images" :key="source" :ref="(element) => { if (element) imageElements[index] = element }" :src="source" :class="`plate plate-${index}`" alt="" @load="imageLoaded(index)" @error="imageFailed" />
+        <img v-for="(source, index) in landscapes" :key="source" :ref="(element) => { if (element) imageElements[index] = element }" :src="source" :class="`plate plate-${index}`" alt="" @load="imageLoaded(index)" @error="imageFailed" />
+        <img :ref="(element) => { if (element) imageElements[3] = element }" :src="seatedCouple" class="seated-couple" alt="" @load="imageLoaded(3)" @error="imageFailed" />
       </div>
       <canvas ref="canvas" class="world-canvas" :class="{ visible: gpuReady }" @webglcontextlost="contextLost" @webglcontextrestored="contextRestored"></canvas>
       <div class="cinematic-grade"></div>
@@ -308,10 +323,12 @@ onBeforeUnmount(() => {
 .growth-story { --wet: 0; --green: 0; --flowers: 0; --season-progress: 0; position: relative; isolation: isolate; overflow: clip; background: #302a22; color: #fbf4e4; font-family: Arial, sans-serif; }
 .growth-story button { font: inherit; color: inherit; cursor: pointer; }
 .world { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.seasonal-plates, .world-canvas, .cinematic-grade, .returning-sun { position: absolute; inset: 0; width: 100%; height: 100%; }
-.plate { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 78% 50%; }
+.world-canvas, .cinematic-grade, .returning-sun { position: absolute; inset: 0; width: 100%; height: 100%; }
+.seasonal-plates { position: absolute; left: var(--plane-left, 0px); top: var(--plane-top, 0px); width: var(--plane-width, 100vw); height: var(--plane-height, 100svh); }
+.plate { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
 .plate-1 { opacity: var(--wet); }
 .plate-2 { opacity: var(--green); }
+.seated-couple { position: absolute; left: 58.8%; top: 54.5%; width: 19%; height: auto; filter: brightness(calc(.94 - var(--wet) * .08 + var(--green) * .12)) saturate(.85); }
 .world-canvas { opacity: 0; transition: opacity 1s; }
 .world-canvas.visible { opacity: 1; }
 .cinematic-grade { background: linear-gradient(90deg, #171d1bb3, #141d183d 55%, #141d1805), linear-gradient(0deg, #091e1bc2, transparent 26%, transparent 80%, #171d1b5e); }
@@ -377,7 +394,9 @@ h2.end-credit { font: italic 28px/1.5 Georgia, serif; letter-spacing: 0; margin:
   .timeline-track { left: 13.2%; right: 13.2%; top: 42px; }
   .blooming-bank { width: 65vw; left: -23%; bottom: -2%; }
   .seedling { width: 40px; max-height: 120px; }
-  .final-section { align-items: flex-end; padding-bottom: 130px; }
+  .final-section { align-items: flex-end; padding-bottom: 110px; }
+  .final-copy { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .replay-story { flex: 0 0 44px; margin-top: 0; }
   h2.end-credit { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {

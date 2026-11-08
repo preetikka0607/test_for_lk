@@ -12,8 +12,10 @@ varying vec2 uv;
 uniform sampler2D dryLand;
 uniform sampler2D firstRain;
 uniform sampler2D forest;
+uniform sampler2D seatedCouple;
 uniform vec2 resolution;
 uniform vec2 imageSize;
+uniform vec2 coupleSize;
 uniform float progress;
 uniform float time;
 
@@ -49,11 +51,6 @@ void main() {
   float field = noise(p * 8.) * .65 + noise(p * 22.) * .35;
   float wetReveal = smoothGrowth(wet, field);
   float forestReveal = smoothGrowth(green, 1. - field);
-  // Let their gestures dissolve more quickly than the landscape around them.
-  float people = (1. - smoothstep(.085, .13, abs(p.x - .675)))
-    * smoothstep(.43, .49, p.y) * (1. - smoothstep(.75, .8, p.y));
-  wetReveal = mix(wetReveal, smoothstep(.45, .55, wet), people);
-  forestReveal = mix(forestReveal, smoothstep(.45, .55, green), people);
   float waterMask = stream(p) * wet;
   float ripple = sin(p.x * 240. + time * 1.4 + noise(p * 80.) * 4.);
   vec2 flow = vec2(ripple, sin(p.y * 290. - time * 2.)) * .0013;
@@ -63,6 +60,23 @@ void main() {
   vec3 lush = texture2D(forest, waterUV).rgb;
   vec3 color = mix(mix(dry, rain, wetReveal), lush, forestReveal);
 
+  // One persistent seated pose: only its light changes with the surrounding season.
+  // Its lower edge stays planted while a subpixel breath moves the shoulders.
+  float coupleHeight = .19 * imageAspect / (coupleSize.x / coupleSize.y);
+  vec2 coupleUV = (p - vec2(.588, .545)) / vec2(.19, coupleHeight);
+  float upperBody = 1. - smoothstep(.3, .9, coupleUV.y);
+  coupleUV.y += sin(time * 1.15) * .0015 * upperBody;
+  coupleUV.x += sin(time * .55 + coupleUV.y * 6.) * .0007 * upperBody;
+  vec4 seated = texture2D(seatedCouple, clamp(coupleUV, 0., 1.));
+  float withinCouple = step(0., coupleUV.x) * step(coupleUV.x, 1.)
+    * step(0., coupleUV.y) * step(coupleUV.y, 1.);
+  seated.a *= withinCouple;
+  vec2 contact = (p - vec2(.683, .545 + coupleHeight * .94)) / vec2(.082, .008);
+  color *= 1. - exp(-dot(contact, contact) * 2.) * .16;
+  vec3 coupleLight = mix(vec3(.96, .92, .87), vec3(.83, .87, .91), wet);
+  coupleLight = mix(coupleLight, vec3(1.04, 1.02, .96), green);
+  color = mix(color, seated.rgb * coupleLight, seated.a);
+
   // Two depths of rain; the shower arrives, then recedes as the canopy returns.
   float shower = smoothstep(.13, .25, progress) * (1. - smoothstep(.42, .63, progress));
   vec2 rainGrid = screen * vec2(120., 16.);
@@ -71,7 +85,8 @@ void main() {
   float speed = 1.8 + hash(vec2(column, 4.)) * 2.;
   float streak = pow(max(0., 1. - abs(fract(rainGrid.x) - .5) * 2.), 18.);
   float trail = pow(fract(rainGrid.y + time * speed + hash(vec2(column, 8.))), 12.);
-  color += vec3(.75, .82, .84) * streak * trail * shower * .16;
+  // The shared tree softens the shower over the seated silhouettes.
+  color += vec3(.75, .82, .84) * streak * trail * shower * .16 * (1. - seated.a * .85);
 
   // Small elliptical impact rings appear only on the newly wet streambed.
   vec2 ringSpace = p * vec2(65., 130.);
@@ -129,11 +144,12 @@ export function createGrowthRenderer(canvas, images) {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image)
-      gl.uniform1i(gl.getUniformLocation(program, ['dryLand', 'firstRain', 'forest'][index]), index)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
+      gl.uniform1i(gl.getUniformLocation(program, ['dryLand', 'firstRain', 'forest', 'seatedCouple'][index]), index)
     })
-    const uniforms = Object.fromEntries(['resolution', 'imageSize', 'progress', 'time'].map((name) => [name, gl.getUniformLocation(program, name)]))
+    const uniforms = Object.fromEntries(['resolution', 'imageSize', 'coupleSize', 'progress', 'time'].map((name) => [name, gl.getUniformLocation(program, name)]))
     gl.uniform2f(uniforms.imageSize, images[0].naturalWidth, images[0].naturalHeight)
+    gl.uniform2f(uniforms.coupleSize, images[3].naturalWidth, images[3].naturalHeight)
 
     return {
       draw(time, progress) {
